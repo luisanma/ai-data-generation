@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API 5G Data Generator</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <style>
+        .endpoint-card {
+            margin-bottom: 20px;
+        }
+        .response-area {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">API 5G Data Generator</a>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Generate Data Card -->
+        <div class="card endpoint-card">
+            <div class="card-header">
+                <h5 class="mb-0">Generar Dataset</h5>
+            </div>
+            <div class="card-body">
+                <form id="generateForm">
+                    <div class="mb-3">
+                        <label for="numSamples" class="form-label">Número de muestras</label>
+                        <input type="number" class="form-control" id="numSamples" value="1000">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Generar</button>
+                </form>
+                <div class="mt-3">
+                    <h6>Respuesta:</h6>
+                    <pre class="response-area" id="generateResponse"></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Generate from JSON Card -->
+        <div class="card endpoint-card">
+            <div class="card-header">
+                <h5 class="mb-0">Generar desde JSON</h5>
+            </div>
+            <div class="card-body">
+                <form id="jsonForm">
+                    <div class="mb-3">
+                        <label for="jsonFile" class="form-label">Archivo JSON</label>
+                        <input type="file" class="form-control" id="jsonFile" accept=".json">
+                    </div>
+                    <div class="mb-3">
+                        <label for="jsonSamples" class="form-label">Número de muestras</label>
+                        <input type="number" class="form-control" id="jsonSamples" value="5">
+                    </div>
+                    <div class="mb-3">
+                        <label for="contextQuery" class="form-label">Consulta de contexto</label>
+                        <input type="text" class="form-control" id="contextQuery" 
+                               value="Analiza los patrones y genera datos similares">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Generar</button>
+                </form>
+                <div class="mt-3">
+                    <h6>Respuesta:</h6>
+                    <pre class="response-area" id="jsonResponse"></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- MongoDB Data Card -->
+        <div class="card endpoint-card">
+            <div class="card-header">
+                <h5 class="mb-0">Consultar MongoDB</h5>
+            </div>
+            <div class="card-body">
+                <form id="mongoForm">
+                    <div class="mb-3">
+                        <label for="limit" class="form-label">Límite</label>
+                        <input type="number" class="form-control" id="limit" value="1000">
+                    </div>
+                    <div class="mb-3">
+                        <label for="skip" class="form-label">Saltar</label>
+                        <input type="number" class="form-control" id="skip" value="0">
+                    </div>
+                    <div class="mb-3">
+                        <label for="format" class="form-label">Formato</label>
+                        <select class="form-control" id="format">
+                            <option value="json">JSON</option>
+                            <option value="csv">CSV</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="datasetId" class="form-label">Dataset ID (opcional)</label>
+                        <input type="text" class="form-control" id="datasetId">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Consultar</button>
+                </form>
+                <div class="mt-3">
+                    <h6>Respuesta:</h6>
+                    <pre class="response-area" id="mongoResponse"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom JS -->
+    <script src="{{ url_for('static', path='/js/main.js') }}"></script>
+</body>
+</html> 
