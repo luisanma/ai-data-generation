@@ -24,6 +24,13 @@ var/
 venv/
 ENV/
 
+# Files
+*.json
+*.csv
+*.xlsx
+*.xls
+*.txt
+
 # IDEs
 .idea/
 .vscode/
