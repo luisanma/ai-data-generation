@@ -12,7 +12,7 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from pydantic import BaseModel
 from pymongo import MongoClient
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from langchain_ollama import OllamaLLM
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -46,11 +46,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Configurar templates
 templates = Jinja2Templates(directory="templates")
 
+
 class DatasetResponse(BaseModel):
     """Modelo de respuesta para datasets."""
     dataset_id: str
     preview: List[dict]
     summary: dict
+
 
 class RAGHelper:
     """Clase auxiliar para gestionar RAG."""
@@ -101,8 +103,10 @@ class RAGHelper:
         )
         return qa_chain.run(query)
 
+
 # Inicializar RAG helper como variable global
 rag_helper = RAGHelper()
+
 
 def generate_synthetic_data(num_samples: int = 10000, patterns: dict = None):
     """Genera datos sintéticos y retorna un DataFrame"""
@@ -141,7 +145,7 @@ def generate_synthetic_data(num_samples: int = 10000, patterns: dict = None):
     df['timestamp'] = df['timestamp'].apply(lambda x: x.isoformat())
     return df
 
-@app.post("/generate", response_model=DatasetResponse)
+@app.post("/generate-dataset", response_model=DatasetResponse)
 async def generate_dataset(num_samples: int = 10000):
     """Genera un nuevo dataset, lo guarda en MongoDB y retorna su ID y una vista previa"""
     try:
@@ -184,7 +188,7 @@ async def generate_dataset(num_samples: int = 10000):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/to-csv/{dataset_id}")
+@app.get("/transform-to-csv/{dataset_id}")
 async def dataset_to_csv(dataset_id: str, preview: bool = True):
     """
     Transforma un dataset a CSV y permite descargarlo.
@@ -236,33 +240,6 @@ async def dataset_to_csv(dataset_id: str, preview: bool = True):
     finally:
         client.close()
 
-@app.post("/initialize-rag/{dataset_id}")
-async def initialize_rag(dataset_id: str):
-    """Inicializa el sistema RAG con un dataset específico"""
-    try:
-        client = MongoClient(MONGO_URI)
-        db = client[DB_NAME]
-        collection = db[COLLECTION_NAME]
-        
-        # Obtener dataset
-        documents = list(collection.find(
-            {'dataset_id': dataset_id},
-            {'_id': 0}
-        ))
-        
-        if not documents:
-            raise HTTPException(status_code=404, detail="Dataset no encontrado")
-        
-        # Convertir a DataFrame
-        df = pd.DataFrame(documents)
-        
-        # Inicializar RAG
-        rag_helper.create_vector_store(df)
-        
-        return {"message": "RAG inicializado exitosamente con el dataset"}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 def clean_numeric_values(value):
     """Limpia valores numéricos para asegurar compatibilidad con JSON"""
@@ -274,88 +251,11 @@ def clean_numeric_values(value):
         return int(value)
     return value
 
+
 def clean_dict_for_json(d):
     """Limpia un diccionario para asegurar compatibilidad con JSON"""
     return {k: clean_numeric_values(v) for k, v in d.items()}
 
-@app.post("/generate-intelligent")
-async def generate_intelligent_data(
-    num_samples: int = 100,
-    context_query: str = "Analiza los patrones de tráfico y genera datos similares"
-):
-    """Genera datos de manera inteligente usando RAG y Mistral"""
-    try:
-        if not rag_helper.vector_store:
-            raise HTTPException(
-                status_code=400, 
-                detail="RAG no inicializado. Usa /initialize-rag primero"
-            )
-        
-        # Consultar al modelo para obtener patrones
-        response = rag_helper.query_dataset(
-            f"""Basado en los datos de tráfico 5G proporcionados, {context_query}.
-            Genera una respuesta en formato JSON con los siguientes campos:
-            - bandwidth_range: [min, max]
-            - latency_range: [min, max]
-            - packet_loss_pattern: [media, desviación]
-            - connection_types: [tipos más comunes]
-            """
-        )
-        
-        # Parsear respuesta del modelo con manejo de errores mejorado
-        try:
-            patterns = json.loads(response)
-            # Validar y corregir rangos
-            patterns['bandwidth_range'] = [
-                max(0, min(1000, float(x))) for x in patterns.get('bandwidth_range', [100, 1000])
-            ]
-            patterns['latency_range'] = [
-                max(0, min(100, float(x))) for x in patterns.get('latency_range', [1, 20])
-            ]
-            patterns['packet_loss_pattern'] = [
-                max(0, min(1, float(x))) for x in patterns.get('packet_loss_pattern', [0.02, 0.01])
-            ]
-        except:
-            # Usar valores por defecto seguros
-            patterns = {
-                "bandwidth_range": [100.0, 1000.0],
-                "latency_range": [1.0, 20.0],
-                "packet_loss_pattern": [0.02, 0.01],
-                "connection_types": ["MIMO", "Beamforming", "Carrier Aggregation"]
-            }
-        
-        # Generar datos usando los patrones identificados
-        df = generate_synthetic_data(num_samples, patterns=patterns)
-        
-        # Generar ID único y guardar
-        dataset_id = str(uuid.uuid4())
-        records = df.to_dict('records')
-        
-        # Limpiar registros para JSON
-        clean_records = [clean_dict_for_json(record) for record in records]
-        
-        for doc in clean_records:
-            doc['dataset_id'] = dataset_id
-            doc['generated_type'] = 'intelligent'
-            
-        client = MongoClient(MONGO_URI)
-        db = client[DB_NAME]
-        collection = db[COLLECTION_NAME]
-        collection.insert_many(clean_records)
-        
-        # Limpiar datos para la respuesta JSON
-        preview_data = [clean_dict_for_json(record) for record in df.head().to_dict('records')]
-        summary_data = {k: clean_dict_for_json(v) for k, v in df.describe().to_dict().items()}
-        
-        return {
-            "dataset_id": dataset_id,
-            "preview": preview_data,
-            "summary": summary_data,
-            "patterns_used": patterns
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) 
 
 @app.post("/ollama-data-generate-from-csv")
 async def generate_data_from_csv(
@@ -393,7 +293,7 @@ async def generate_data_from_csv(
         
         # 4. Configurar RAG
         llm = OllamaLLM(
-            model="qwen2.5:latest",
+            model="qwen2.5:7b",
             temperature=0.5,
             base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         )
@@ -410,14 +310,26 @@ async def generate_data_from_csv(
         
         for i in range(num_samples):
             prompt = f"""
-            Basado en el siguiente contexto de datos:
+            Basado en el siguiente contexto de datos y valores:
             {context_query}
-            
-            Genera un único registro realista en formato JSON con los siguientes campos:
-            {', '.join(columns)}
-            
-            El registro debe ser coherente y seguir los patrones del dataset original.
-            IMPORTANTE: Responde SOLO con el JSON puro, sin markdown, sin comillas triples, sin explicaciones.
+
+            Importante:
+            - Genera un registro nuevo y unico.
+            - El registro debe seguir patrones realistas y contener estos campos:
+              {', '.join(columns)}.
+
+            En particular:
+            - La columna 'connection_type' debe tener una mayor variación.
+            - Aparte de los valores por defecto,a lgunos ejemplos válidos para 'connection_type' son:
+              - '4G'
+              - '5G'
+              - 'LTE'
+              - 'WiFi'
+              - 'Satellite'
+              - 'Edge Network'
+            - Escoge uno de estos valores de forma aleatoria o combina con otras alternativas realistas.
+
+            Responde SOLO con el JSON puro, sin markdown, sin comillas triples, sin explicaciones.
             """
             
             response = qa_chain.run(prompt)
@@ -537,8 +449,8 @@ async def generate_data_from_json(
         
         # 6. Configurar RAG con el modelo por defecto
         llm = OllamaLLM(
-            model="qwen2.5:latest",
-            temperature=0.5,
+            model="qwen2.5:7b",
+            temperature=0.8,
             base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         )
         
@@ -553,26 +465,33 @@ async def generate_data_from_json(
         columns = df.columns.tolist()
         
         # Obtener estadísticas del dataset original para el contexto
-        stats_context = df.describe().to_string()
+        # stats_context = df.describe().to_string()
         
         for i in range(num_samples):
             prompt = f"""
-            Basado en el siguiente contexto de datos y sus estadísticas:
-            
-            Estadísticas del dataset:
-            {stats_context}
-            
-            Contexto adicional:
+            Basado en el siguiente contexto de datos y valores:
             {context_query}
-            
-            Genera un único registro realista en formato JSON con los siguientes campos:
-            {', '.join(columns)}
-            
-            El registro debe ser coherente y seguir los patrones estadísticos del dataset original.
-            IMPORTANTE: Responde SOLO con el JSON puro, sin markdown, sin comillas triples, sin explicaciones.
+
+            Importante:
+            - Genera un registro nuevo y unico.
+            - El registro debe seguir patrones realistas y contener estos campos:
+              {', '.join(columns)}.
+
+            En particular:
+            - La columna 'connection_type' debe tener una mayor variación.
+            - Aparte de los valores por defecto,a lgunos ejemplos válidos para 'connection_type' son:
+              - '4G'
+              - '5G'
+              - 'LTE'
+              - 'WiFi'
+              - 'Satellite'
+              - 'Edge Network'
+            - Escoge uno de estos valores de forma aleatoria o combina con otras alternativas realistas.
+
+            Responde SOLO con el JSON puro, sin markdown, sin comillas triples, sin explicaciones.
             """
             
-            response = qa_chain.run(prompt)
+            response = qa_chain.invoke({"query": prompt})
             
             try:
                 # Limpiar la respuesta
@@ -645,6 +564,7 @@ async def generate_data_from_json(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/get-mongodb-data")
 async def get_mongodb_data(
@@ -790,9 +710,10 @@ async def clean_json_data(
         raise HTTPException(
             status_code=500,
             detail=f"Error al procesar los datos: {str(e)}"
-        ) 
+        )
+
 
 @app.get("/", response_class=HTMLResponse)
 async def get_html(request: Request):
     """Sirve la interfaz web"""
-    return templates.TemplateResponse("index.html", {"request": request}) 
+    return templates.TemplateResponse("index.html", {"request": request})
