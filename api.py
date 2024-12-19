@@ -491,7 +491,7 @@ async def generate_data_from_json(
             Responde SOLO con el JSON puro, sin markdown, sin comillas triples, sin explicaciones.
             """
             
-            response = qa_chain.invoke({"query": prompt})
+            response = qa_chain.run(prompt)
             
             try:
                 # Limpiar la respuesta
